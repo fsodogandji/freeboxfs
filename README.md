@@ -1,4 +1,4 @@
 freeboxfs
 =========
 
-A fuse filesystem for remote freebox revolution
+A fuse filesystem for the freebox revolution
