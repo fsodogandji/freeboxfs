@@ -56,7 +56,7 @@ logger = logging.getLogger('freeboxFS')
 logger.setLevel(logging.DEBUG)
 
 # create file handler which logs even debug messages
-fh = logging.FileHandler('freeboxFS.log')
+fh = logging.FileHandler('./freeboxFS.log')
 fh.setLevel(logging.DEBUG)
 
 # create console handler with a higher log level
