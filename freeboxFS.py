@@ -21,7 +21,7 @@ import urllib
 import shutil
 import simplejson as json
 #import inspect
-
+import  traceback, os.path
 
 # Specify what Fuse API use: 0.2
 fuse.fuse_python_api = (0, 2)
@@ -161,7 +161,10 @@ class MyFS(fuse.Fuse):
      except Exception, err:
             logger.debug("%s %s %s"  %(get_func_name(),sys.exc_info()[0],str(err)))
 
- 
+    def mkdir(self,path,mode):
+        logger.debug( "path: %s mode: %s" % (get_func_name(),path))	
+        self.freebox.mkdir(path)
+	#return -errno.ENOSYS 
 
    
     def readdir(self, path, offset):
@@ -212,10 +215,30 @@ class Freebox():
             return False
         return True
 
+    def mkdir(self,path):
+	  logger.debug( "!*!*!!*!*!*!*!*!*!*!*!*!*!*!*!*!*!**!*!*!*!!*!")
+          logger.debug( "%s %s" % (get_func_name(),path))
+          try:
+    #        request = self.url+"/fs.cgi",'{"jsonrpc":"2.0","method":"fs.mkdir","params":["'+path+'"]}',{"Referer": "http://mafreebox.fr/explorer.php","Content-Type": "application/json; charset=utf-8"}
+     #       logger.debug("***MKDIR *** %s"  %(request)) 
+	    req = urllib2.Request(self.url+"/fs.cgi",
+                '{"jsonrpc":"2.0","method":"fs.mkdir","params":["'+path+'"]}',
+                 {"Referer": "http://mafreebox.fr/explorer.php",
+                "Content-Type": "application/json; charset=utf-8"})
+            logger.debug( "s% req: %s  " % (get_func_name(),req))
+            statusreq = urllib2.urlopen(req).readline()
+            logger.debug( "s% statusreq: %s  " % (get_func_name(),statusreq))
+          except Exception, err:
+		 logger.debug("%s %s %s"  %(get_func_name(),sys.exc_info()[0],str(err)))
+                 top = traceback.extract_stack()[-1]
+                 logger.debug("%s" %(', '.join([type(e).__name__, os.path.basename(top[0]), str(top[1])])))
+                 
+
+
     def  listFile(self,path):
       try:
 	req = urllib2.Request(self.url+"/fs.cgi",
-      			'{"jsonrpc":"2.0","method":"fs.list","id":0.1778238959093924,"params":["'+path+'",{"with_attr":false}]}',
+      			'{"jsonrpc":"2.0","method":"fs.list","id":0.1778238959093924,"params":"'+path+'"}',
                         {"Referer": "http://mafreebox.fr/explorer.php",
                                 "Content-Type": "application/json; charset=utf-8"})
 	
@@ -269,19 +292,16 @@ class Freebox():
 
 def main():
     """
-    This function enables using freeboxfs.py as a shell script that creates FUSE
+    This function enables using freeboxFS.py as a shell script that creates FUSE
     mount points. Execute "freeboxfs -h" for a list of valid command line options.
     """
-    print "cdssdcdsccdsc"
     freeboxfs = MyFS()
     # A short usage message with the command line options defined by dedupfs
     # itself (see the __init__() method of the DedupFS class) is automatically
     # printed by the following call when sys.argv contains -h or --help.
     fuse_opts = freeboxfs.parse(['-o', 'use_ino,default_permissions,fsname=freeboxfs'] + sys.argv[1:])
     freeboxfs_opts = freeboxfs.cmdline[0]
-    print "2 cdssdcdsccdsc"
     print fuse_opts 
-    print "3 cdssdcdsccdsc"
     print freeboxfs_opts
 
     # If the user didn't pass -h or --help and also didn't supply a mount point
