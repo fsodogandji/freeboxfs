@@ -228,6 +228,7 @@ class Freebox():
             logger.debug( "s% req: %s  " % (get_func_name(),req))
             statusreq = urllib2.urlopen(req).readline()
             logger.debug( "s% statusreq: %s  " % (get_func_name(),statusreq))
+            self.file[path] = True
           except Exception, err:
 		 logger.debug("%s %s %s"  %(get_func_name(),sys.exc_info()[0],str(err)))
                  top = traceback.extract_stack()[-1]
