@@ -8,5 +8,8 @@ A fuse filesystem for the freebox revolution
 
 Usage:
 ----
+ mount the HD of a freebox Revolution,  run:
+
 python  freeboxFS.py --url freebox_IP_adress --password myFreeboxPass mountDirectory/
+
 
