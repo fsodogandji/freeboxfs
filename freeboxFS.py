@@ -22,12 +22,16 @@ import shutil
 import simplejson as json
 #import inspect
 import  traceback, os.path
+import httplib2
+from collections import defaultdict
+import requests
 
 # Specify what Fuse API use: 0.2
 fuse.fuse_python_api = (0, 2)
 
 import inspect
 
+from  freeboxAPI import Freebox
 
 def datetime2timestamp(date_str, date_format="%a, %d %b %Y %H:%M:%S GMT"):
      time_tuple = time.strptime(date_str, date_format)
@@ -114,7 +118,8 @@ class MyFS(fuse.Fuse):
            self.flags = 0
            self.multithreaded = 0
            self.read_only = True
-           
+           self.filetreeFS = defaultdict(dict)
+           self.filetreeFS['/'] = { 'modification': 1365279471, 'type': 'dir', 'name': '/', 'size': 4096}
            #self.parser.add_option('--help', action='help', help="show this help message followed by the command line options defined by the Python FUSE binding and exit")
            self.parser.add_option('-v', '--verbose', action='count', dest='verbosity', default=0, help="increase verbosity")
            self.parser.add_option('--url', action="store",  dest='url', help="url de la freebox revolution")
@@ -139,23 +144,17 @@ class MyFS(fuse.Fuse):
 
     def getattr(self, path):
      try:
-        #path = path.encode('utf_8')
+
         if path == '/':
             logger.debug( "%s  %s" % (get_func_name(),path))
 	    return MyStat(True, 4096)
         elif path in self.freebox.file :
-           if not self.freebox.file[path] :
+       
                  logger.debug( "%s  path: %s" % (get_func_name(),path))
                  logger.debug( "%s : %s" % (get_func_name(),str(self.freebox.url)))
-                 response = urllib2.urlopen(urllib2.Request(self.freebox.url + "/get.php",urllib.urlencode({'filename' : path})))
-                 headers = response.info()
-                 #last_modified_time =  headers.getheader("Last-Modified")
-                 last_modified_timestamp = datetime2timestamp(headers.getheader("Last-Modified")) 
-                 filesize = int(response.info().getheader('Content-Length').strip())
-                 return MyStat(False,filesize,last_modified_timestamp)
-           else: 
-                 # TODO put the correct date for directories
-                 return MyStat(True,0,0)
+#                 last_modified_timestamp = self.freebox.timestamp[path]
+#                 filesize = self.freebox.size[path] 
+                 return MyStat(self.freebox.file[path], self.freebox.size[path],self.freebox.timestamp[path])
         else :
 	    return -errno.ENOENT
      except Exception, err:
@@ -164,7 +163,7 @@ class MyFS(fuse.Fuse):
     def mkdir(self,path,mode):
         logger.debug( "path: %s mode: %s" % (get_func_name(),path))	
         self.freebox.mkdir(path)
-	#return -errno.ENOSYS 
+
 
    
     def readdir(self, path, offset):
@@ -172,124 +171,34 @@ class MyFS(fuse.Fuse):
         logger.debug( "%s  %s offset %d" % (get_func_name(),path,offset))
         yield fuse.Direntry('.')                                                
         yield fuse.Direntry('..')
-        #logger.debug("%s size self.freebox.listFile %d  ")  % (get_func_name(),len( self.freebox.listFile(path)))
-        for entry in self.freebox.listFile(path) :
+        #logger.debug("%s size self.freebox.readdir %d  ")  % (get_func_name(),len( self.freebox.readdir(path)))
+        self.freebox.readdir(path)
+        for entry in self.freebox.readdir(path) :
             logger.debug("%s  entry: %s"  % (get_func_name(),entry))
             yield fuse.Direntry(entry.encode('utf_8'))
       except :
             logger.debug(sys.exc_info()[0])
 
 
-    def read(self, path, offset,size):
-	print "read: path %s" % (path)
-        logger.debug( "%s  %s %d %d" % (get_func_name(),path,offset,size))
-	#if path == '/toto' :
-        #return "Ca marche !!!!"
+    def open(self, path, flags):
+        logger.debug( "%s  %s %s" % (get_func_name(),path,flags))
+        if path not in self.freebox.file:
+             return -errno.ENOENT
         self.freebox.getFile(path)
-        slen = os.stat('/tmp/freeboxFS.tmp')[stat.ST_SIZE]
-        #logger.debug("slen %d /tmp/freeboxFS.tmp " % (slen))
-        with open('/tmp/freeboxFS.tmp') as fp:
-                 fp.seek(offset)
-                 buf = fp.read(size)
-        return buf
+        return open("/tmp/fuse.tmp", "rb")
 
 
-class Freebox():
-
-    def __init__(self,url,password):
-        logging.debug("********************************************************"+self.__class__.__name__)
-        self.file = {"/" : True, "." : True, ".." : True }
-        self.size = {"/" : 2048, "." : 2048, ".." : 2048}
-        self.url = url
-        self.password = password
-        cj = cookielib.LWPCookieJar()
-        opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
-        urllib2.install_opener(opener)
-        self.authentification()
-
-    def authentification(self):
-        logreq = urllib2.urlopen(self.url+"/login.php",
-		urllib.urlencode({"login":"freebox","passwd":self.password}))
-        if logreq.geturl() == self.url+"/login.php":
-            print "Mot de passe incorrect."
-            return False
-        return True
-
-    def mkdir(self,path):
-	  logger.debug( "!*!*!!*!*!*!*!*!*!*!*!*!*!*!*!*!*!**!*!*!*!!*!")
-          logger.debug( "%s %s" % (get_func_name(),path))
-          try:
-    #        request = self.url+"/fs.cgi",'{"jsonrpc":"2.0","method":"fs.mkdir","params":["'+path+'"]}',{"Referer": "http://mafreebox.fr/explorer.php","Content-Type": "application/json; charset=utf-8"}
-     #       logger.debug("***MKDIR *** %s"  %(request)) 
-	    req = urllib2.Request(self.url+"/fs.cgi",
-                '{"jsonrpc":"2.0","method":"fs.mkdir","params":["'+path+'"]}',
-                 {"Referer": "http://mafreebox.fr/explorer.php",
-                "Content-Type": "application/json; charset=utf-8"})
-            logger.debug( "s% req: %s  " % (get_func_name(),req))
-            statusreq = urllib2.urlopen(req).readline()
-            logger.debug( "s% statusreq: %s  " % (get_func_name(),statusreq))
-            self.file[path] = True
-          except Exception, err:
-		 logger.debug("%s %s %s"  %(get_func_name(),sys.exc_info()[0],str(err)))
-                 top = traceback.extract_stack()[-1]
-                 logger.debug("%s" %(', '.join([type(e).__name__, os.path.basename(top[0]), str(top[1])])))
-                 
+    def read(self, path, size, offset, fh):
+        logger.debug( "%s  %s %s" % (get_func_name(),path,fh.name))
+        fh.seek(offset)
+        return fh.read(size)
 
 
-    def  listFile(self,path):
-      try:
-	req = urllib2.Request(self.url+"/fs.cgi",
-      			'{"jsonrpc":"2.0","method":"fs.list","id":0.1778238959093924,"params":"'+path+'"}',
-                        {"Referer": "http://mafreebox.fr/explorer.php",
-                                "Content-Type": "application/json; charset=utf-8"})
-	
-        try:                
-            statusreq = urllib2.urlopen(req)
-	except urllib2.HTTPError:
-            print "Erreur de Connection.\n Exit"
-            exit()
-            
-	json_data = json.loads(statusreq.readline())
-	logger.debug("%s json_data: %s" %(get_func_name(),json_data))
-        #logger.debug("%s json_data[\"result\"]: %s" %(get_func_name(), json.dumps(json_data["result"])))
-	for item in json_data["result"]:
-		filetype = item["type"]
-	        filename = item["name"]
-                logger.debug("%s filename: %s" %(get_func_name(),filename))
-                
-                if path == "/" :
-                    fullpath = "/"+filename.encode('utf-8')
-                else :
-                       fullpath = path+"/"+filename.encode('utf-8')
-                       logger.debug("%s fullpath %s" % (get_func_name(),fullpath))
-                if filetype == 'dir' : self.file[fullpath] = True
-                else :
-                      self.file[fullpath] = False
-                      response = urllib2.urlopen(urllib2.Request(self.url+"/get.php",urllib.urlencode({'filename' : fullpath})))
-		      filesize = int(response.info().getheader('Content-Length').strip())
-                      self.size[fullpath]   =  filesize               
-                    
-                yield filename
-      except Exception, err:
-            logger.debug("%s %s %s"  %(get_func_name(),sys.exc_info()[0],str(err)))
+    def release(self, path, flags, fh):
+        logger.debug( "%s  %s %s" % (get_func_name(),path,str(flags)))
+        fh.close()
+        os.unlink(fh.name)        
 
-
-    def getFile(self,path):
-        logger.debug("getFile BEGIN path: %s" % (path))
-        values = {'filename' : path}
-        data = urllib.urlencode(values)
-        req = urllib2.Request(self.url+"/get.php", data)   
-        response  = urllib2.urlopen(req)
-      	#shutil.copyfileobj(response, tmpFile)
-        
-        try:
-		with open( "/tmp/freeboxFS.tmp", 'wb') as tmpFile:
-			shutil.copyfileobj(response, tmpFile)
-        except :
-            logger.debug(sys.exc_info()[0])
-         
-        logger.debug("getFile END   path: %s" % (path))
-        #return response.read()
 
 def main():
     """
